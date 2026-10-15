@@ -1,36 +1,66 @@
-# Validation on 2026-10-15
+# Engineering validation — 2026-10-15
 
-Target: classic ESP32-2432S028R CYD, PlatformIO 6.2.0,
-espressif32 7.1.3, Arduino ESP32 2.0.17, NimBLE-Arduino 2.3.6.
+Target: GHOSTLINK 0.4.0, classic 4 MB ESP32-2432S028R CYD.
+Toolchain: PlatformIO 6.2.0, espressif32 7.1.3, Arduino ESP32 2.0.17,
+TFT_eSPI 2.5.43, NimBLE-Arduino 2.3.6, pinned XPT2046 source revision.
 
 | Check | Result |
 | --- | --- |
-| ghost-a setup build | PASS |
-| ghost-b setup build | PASS |
-| ghost-a synthetic paired build | PASS |
-| ghost-b synthetic paired build | PASS |
-| Host protocol suite | PASS |
-| Address/undefined-behavior sanitizers on protocol tests | PASS |
-| Pair configuration validation and fresh-key generation | PASS |
+| A, B, relay configured firmware builds | PASS |
+| A, B, relay setup builds from tracked source only | PASS |
+| Host protocol/mesh suite | PASS |
+| Address and undefined-behavior sanitizers | PASS |
+| Pair generator and relay export key separation | PASS |
 | Git whitespace check | PASS |
 
-The protocol suite exercises unsigned timer wrap, delayed sync processing,
-nonoverlapping data windows, malformed packet rejection, frame replay,
-sender reboot identities, stale/out-of-order ACKs, full receive/outbound
-queues, duplicate suppression and 400 deliveries with simulated data/ACK loss,
-receiver backpressure and temporary total outages in both directions.
+The host suite executes the firmware's portable protocol, codec, envelope,
+queue, replay, neighbor, and clock implementations. It covers:
 
-These are component tests and firmware compilation, not an RF simulation or
-hardware validation. No serial ESP32 device was connected during this work.
-Range, over-the-air recovery, coexistence, display orientation and touch
-calibration remain to be checked using BENCH_TEST.md.
+- Every text length from 1 to 160 bytes, packed and raw byte content, exact
+  round trips, unsupported characters, and variable wire sizes.
+- AES-256-GCM known-answer vector, altered ciphertext/tag/address/sequence,
+  invalid receipts, and inability of a relay key to decrypt endpoint messages.
+- Every single-byte mutation of a valid frame, truncated frames, and 10,000
+  malformed frame/envelope inputs.
+- Timer/frame wrap, retired boot identities, neighbor expiry, delayed clock
+  processing, multi-hop clock forwarding, and stale-pulse loop rejection.
+- Three-node channel simulation with 30% HELLO loss, missed schedule activation,
+  home-channel recovery, and coordinator reboot. No direct A-to-B edge exists.
+- Full origin/inbox/forwarding queues, ACK admission when data storage is full,
+  durable snapshot restoration, duplicate receipts, malformed persisted state,
+  hop limits, and refusal to replace ciphertext under an existing message ID.
+- 100 two-way simulated deliveries through relays with 40% data/ACK packet loss,
+  disconnected contacts, a relay restart, an alternative relay path, and a
+  complete temporary outage. Endpoints never have a direct simulated edge.
 
-Synthetic MACs were used only to compile the paired path. The generated
-private test header was removed afterwards, and both final local firmware
-images were rebuilt in unpaired SETUP mode. No usable pair keys are published.
+Host cryptographic calls use OpenSSL; the ESP32 builds use mbedTLS. Both use
+identical envelope, key-derivation, nonce, and associated-data code. Native
+simulations model packet delivery/loss and channel matching, not RF propagation,
+Wi-Fi/BLE scheduling, ESP-NOW driver callbacks, NVS hardware behavior, or flash
+power-failure timing. They are not proof of over-the-air range or durability.
 
-The paired builds occupy about 80.5% of the default application flash
-partition and 17.3% of static RAM. Setup builds occupy about 71.2% of flash
-and 15.7% of static RAM. Runtime heap/stack margins require measurement on
-hardware. TFT_eSPI's warning about its optional built-in touch functions is
-expected: this project uses XPT2046_Touchscreen on a separate SPI peripheral.
+Run the host checks with Python 3, g++, and the OpenSSL development headers:
+
+```sh
+python3 tools/test_host.py
+```
+
+For the sanitizer run:
+
+```sh
+g++ -std=c++17 -Wall -Wextra -Werror -DGHOST_HOST_TEST \
+  -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+  -I include -I src tests/protocol_test.cpp -lcrypto -o /tmp/ghostlink-tests
+/tmp/ghostlink-tests
+```
+
+Configured builds use approximately 21.7% of static RAM and 56.2% of their
+1856 KiB application partition. Runtime heap/stack usage still needs measurement.
+TFT_eSPI's optional built-in touch warning is expected because this project uses
+XPT2046_Touchscreen on a separate SPI peripheral.
+
+No /dev/ttyUSB* or /dev/ttyACM* ESP32 device was connected during this work.
+Use BENCH_TEST.md for the physical tests. All synthetic private configuration
+headers were removed after compilation; no test keys or configured firmware
+are included in the published source. README intentionally contains setup and
+operation instructions rather than this engineering record.

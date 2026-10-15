@@ -2,6 +2,7 @@
 .venv
 __pycache__/
 include/ghost_pair_private.h
+include/ghost_relay_private.h
 *.bin
 *.elf
 .DS_Store

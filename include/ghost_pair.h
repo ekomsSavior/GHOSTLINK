@@ -1,6 +1,8 @@
 #pragma once
 #include <Arduino.h>
-#if __has_include("ghost_pair_private.h")
+#if GHOST_NODE_ROLE == 2 && __has_include("ghost_relay_private.h")
+#include "ghost_relay_private.h"
+#elif GHOST_NODE_ROLE != 2 && __has_include("ghost_pair_private.h")
 #include "ghost_pair_private.h"
 #else
 
@@ -25,11 +27,12 @@ constexpr uint16_t NETWORK_ID = 0x0000;
 constexpr uint8_t NODE_A_MAC[6] = {0, 0, 0, 0, 0, 0};
 constexpr uint8_t NODE_B_MAC[6] = {0, 0, 0, 0, 0, 0};
 
-// ESP-NOW PMK and LMK are 16 bytes each.
+// PMK is retained for provisioning-file compatibility. LMK is the endpoint
+// chat secret; relay exports must not contain it.
 constexpr uint8_t PMK[16] = {0};
 constexpr uint8_t LMK[16] = {0};
 
-// Pair-unique master for hopping and domain-separated packet/BLE HMAC keys.
+// Network membership key for hopping and transport/BLE authentication.
 constexpr uint8_t HOP_KEY[32] = {0};
 
 } // namespace ghostpair

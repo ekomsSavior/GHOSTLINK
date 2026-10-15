@@ -1,28 +1,32 @@
 # GHOSTLINK
 
-Two ESP32 CYDs, two-way text, no router, SIM, phone, server or internet at runtime.
+Offline text messaging between ESP32 CYDs. No router, SIM, phone, server,
+external radio, or internet connection is needed while communicating.
 
-A is the **anchor** and B is the **hunter**. They follow a pair-specific channel
-schedule, exchange encrypted ESP-NOW messages, and automatically find each
-other again after a radio outage. Both boards can send and receive.
+Two CYDs work as the chat endpoints **A** and **B**. Additional CYDs can run
+as relays, automatically discover their neighbors, and carry encrypted messages
+between the endpoints. Relays use the same onboard ESP32 radio and screen;
+no additional components are required.
+
+Messages wait in onboard flash during an outage and resume when a path becomes
+available. The destination confirms delivery. Text is packed into fewer bytes
+when possible, then restored at the destination.
 
 **A fresh clone contains the complete project. No previous GHOSTLINK release
-is needed.** Build both boards from the same checkout and pair them once.
+is needed.** Build every participating board from this checkout.
 
 ## Hardware
 
-The current display target is the classic **ESP32-2432S028R 2.8-inch CYD** with
-ESP32-WROOM-32, ILI9341 display and XPT2046 resistive touch.
+The display target is the classic **ESP32-2432S028R 2.8-inch CYD** with
+ESP32-WROOM-32, ILI9341 display, XPT2046 resistive touch, and 4 MB flash.
 
 | Peripheral | Pins | SPI |
 | --- | --- | --- |
 | Display | MOSI 13, MISO 12, CLK 14, CS 15, DC 2, backlight 21 | HSPI |
 | Touch | MOSI 32, MISO 39, CLK 25, CS 33, IRQ 36 | VSPI |
 
-CYD revisions vary. Display configuration is in
-`include/User_Setup_Ghostlink.h`; touch calibration is in
-`include/ghost_config.h`. Other ESP32 boards require board/display
-adaptation; this is not a universal ESP32-family build.
+CYD revisions vary. Display settings are in `include/User_Setup_Ghostlink.h`
+and touch calibration is in `include/ghost_config.h`.
 
 ## Clone and build
 
@@ -35,16 +39,16 @@ cd GHOSTLINK
 pio run -e ghost-a -e ghost-b
 ```
 
-You can also clone the same project from
+The same project is available on
 [Gitea](https://git.churchofmalware.org/ek0mssavi0r/GHOSTLINK).
-Choose either repository; you only need one checkout. PlatformIO downloads
-the pinned ESP32 toolchain and libraries on the first build. Internet is
-needed for those downloads, but the boards communicate entirely offline.
+Choose either repository; only one checkout is needed. PlatformIO downloads
+the pinned toolchain and libraries for the first build. The boards operate
+offline once flashed.
 
-## Read the two board addresses
+## Read the endpoint addresses
 
-Connect both boards with USB data cables. Replace the example serial ports
-below with their actual ports (`pio device list` shows connected devices).
+Connect your CYDs with USB data cables. Use `pio device list` to find their
+serial ports and replace the example ports below.
 
 Flash board A and read its station MAC:
 
@@ -60,12 +64,12 @@ pio run -e ghost-b -t upload --upload-port /dev/ttyUSB1
 pio device monitor --port /dev/ttyUSB1
 ```
 
-The boards show **SETUP** until paired. Record both MAC addresses, then
-exit the monitor before continuing.
+The boards show **SETUP** until configured. Record both MAC addresses, then
+exit the monitor.
 
-## Pair and flash
+## Configure and flash the endpoints
 
-Generate **one** configuration, then use it for both builds:
+Generate **one** configuration for your two actual MAC addresses:
 
 ```sh
 python3 tools/make_pair.py \
@@ -76,47 +80,67 @@ pio run -e ghost-a -t upload --upload-port /dev/ttyUSB0
 pio run -e ghost-b -t upload --upload-port /dev/ttyUSB1
 ```
 
-Replace those example MACs and serial ports. The firmware verifies that its
-own MAC matches its A/B role. The private header is ignored by Git. Do not
-regenerate it between boards: that would give them different keys.
+Replace those example MACs and serial ports. A and B must use the same
+configuration. Each endpoint checks its own address against its assigned role.
+Keep this file for future builds of this network; generating another one
+creates different keys. The private file is ignored by Git.
 
-Builds contain the pair keys once configured. Keep configured firmware and
-the private header private. The public setup builds contain no usable pair.
+## Add CYD relays
+
+Export relay membership from the existing endpoint configuration:
+
+```sh
+python3 tools/make_relay.py include/ghost_pair_private.h \
+  > include/ghost_relay_private.h
+pio run -e ghost-relay -t upload --upload-port /dev/ttyUSB2
+```
+
+Flash `ghost-relay` to each additional CYD, changing the port for each board.
+No relay MAC list is needed. Relays discover other configured CYDs automatically
+and display their neighbor count and stored packets. They can forward and store
+messages without the endpoints' chat decryption key.
+
+Keep both private configuration files and configured firmware private. Share
+only the relay configuration with someone provisioning a relay for your network.
+The relay build uses `ghost_relay_private.h` and does not include the endpoint
+configuration. Public setup builds contain no usable network keys.
 
 ## Use
 
-Type on either touchscreen and press SEND. `123` changes to digits and
-punctuation; `ABC` returns to letters. Each tap inserts one character.
-Messages wrap in full. Tap the left/right half of the chat area to browse
-older/newer entries (24 messages retained while powered).
+Type on A or B and press **SEND**. `123` changes to digits and punctuation;
+`ABC` returns to letters. Tap the left or right half of the chat area to browse
+older or newer messages.
 
-- **SETUP**: no pair provisioned.
-- **ERROR**: radio initialization or local MAC validation failed; check serial.
-- **HUNT**: B is searching for A.
-- **SYNC**: A has its clock but has not recently heard B.
-- **LINK**: authenticated ESP-NOW traffic was recently received.
-- **Q:n**: number of queued messages.
-- **.** beside a message: waiting for the peer's application ACK.
-- **+**: peer accepted the message. This is not a human read receipt.
+- **SETUP**: configure the board before messaging.
+- **ERROR**: check the serial console for the configuration, storage, or radio error.
+- **HUNT**: no participating neighbor is currently in contact.
+- **MESH**: at least one participating neighbor was heard recently.
+- **N:n**: number of neighbors currently in contact.
+- **Q:n**: outgoing messages awaiting destination confirmation.
+- **.** beside a message: queued or awaiting confirmation.
+- **+**: the destination accepted the message; this is not a human read receipt.
 
-At 115200 baud, type plain text followed by Enter to send. `/status`
-prints channel, sync/link state, queue depth and packet counters;
-`/help` prints the console commands. Messages are limited to 160 bytes.
+A neighbor connection alone does not confirm a path to the destination. The
+**+** receipt confirms delivery. Pending outgoing messages survive a restart.
+When the eight-message outbox is full, SEND keeps your text in the composer.
 
-If the eight-message outbox is full, SEND retains the composer and the serial
-console reports the reason. After six attempted sends without an ACK, the
-sender rests for five seconds and retries. Disconnects do not discard messages.
+At 115200 baud, enter plain text to send from either endpoint. `/status` shows
+radio, queue, and channel information; `/neighbors` lists nearby participating
+CYDs; `/help` lists commands. Messages can contain up to 160 UTF-8 bytes.
 
-## Range and recovery
+## Channels and mesh coverage
 
-LR uses the existing ESP32 radio; no additional chip is needed. Actual distance
-depends on antennas, placement, obstructions and interference. Hopping and BLE
-help recovery, not RF propagation. A cannot relay through absent third nodes.
+A coordinates a shared hopping schedule, which relays pass onward. Every
+24 seconds the schedule returns to the network's home channel so separated
+nodes can meet again. BLE supplies nearby discovery hints. The radios observe
+surrounding Wi-Fi beacon activity and coordinate channel preferences, while
+continuing to sample other channels.
 
-After deep hunt begins, A offers a rendezvous slot every **14.4 seconds**.
-That is a scheduled opportunity, not a guaranteed recovery deadline under loss
-or interference. BLE can shorten discovery nearby. Disable
-`ENABLE_BLE_RESCUE` to compare Wi-Fi-only recovery on the bench.
+Two CYDs need a direct radio path. Additional CYDs extend coverage by receiving
+and retransmitting messages. A moving relay can carry a stored message between
+contacts. All forwarding devices must run GHOSTLINK with this network's relay
+configuration. The built-in LR mode handles the radio link; channel selection
+and compact messages reduce interference exposure and airtime.
 
 ## License
 

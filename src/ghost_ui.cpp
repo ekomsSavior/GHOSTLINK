@@ -30,6 +30,10 @@ void GhostUI::begin() {
   tft_.setRotation(1);
   tft_.setTextWrap(false);
   tft_.fillScreen(C_BG);
+  for (size_t i = 0; i < OUTBOX_DEPTH; ++i) {
+    String text; uint32_t seq = 0;
+    if (Radio.restoredMessage(i, text, seq)) pushLine(true, text, seq, '.');
+  }
   drawAll();
 }
 
@@ -56,12 +60,10 @@ void GhostUI::drawHeader() {
     tft_.print("ERROR");
   } else if (!Radio.configured()) {
     tft_.print("SETUP");
-  } else if (Radio.hunting()) {
-    tft_.print("HUNT");
-  } else if (Radio.linked()) {
-    tft_.print("LINK");
+  } else if (Radio.neighbors()) {
+    tft_.print("MESH");
   } else {
-    tft_.print("SYNC");
+    tft_.print("HUNT");
   }
 
   tft_.setCursor(174, 4);
@@ -72,8 +74,7 @@ void GhostUI::drawHeader() {
 
   tft_.setCursor(238, 4);
   if (Radio.queuedMessages()) tft_.printf("Q:%u", unsigned(Radio.queuedMessages()));
-  else if (Radio.rssi() > -126) tft_.printf("%ddBm", Radio.rssi());
-  else tft_.print("--dBm");
+  else tft_.printf("N:%u", unsigned(Radio.neighbors()));
 }
 
 void GhostUI::drawChat() {
@@ -96,6 +97,14 @@ void GhostUI::drawChat() {
     return;
   }
 
+  if (Radio.role() == 2) {
+    tft_.setTextFont(2); tft_.setTextColor(C_FG, C_BG);
+    tft_.setCursor(6, 31); tft_.print("CYD RELAY");
+    tft_.setCursor(6, 55); tft_.printf("Neighbors: %u", unsigned(Radio.neighbors()));
+    tft_.setCursor(6, 79); tft_.printf("Stored packets: %u", unsigned(Radio.relayMessages()));
+    tft_.setTextFont(1); tft_.setCursor(6, 105); tft_.print("Forwarding encrypted messages");
+    return;
+  }
   const size_t end = lineCount_ - historyOffset_;
   const size_t start = end > 2 ? end - 2 : 0;
   tft_.setTextFont(1);
@@ -121,6 +130,7 @@ void GhostUI::drawChat() {
 
 void GhostUI::drawComposer() {
   tft_.fillRect(0, 120, 320, 27, C_BG);
+  if (Radio.role() == 2) return;
   tft_.drawRect(2, 121, 316, 24, C_LINE);
   tft_.setTextColor(C_FG, C_BG);
   tft_.setTextFont(1);
@@ -133,6 +143,7 @@ void GhostUI::drawComposer() {
 
 void GhostUI::drawKeyboard() {
   tft_.fillRect(0, 148, 320, 92, C_BG);
+  if (Radio.role() == 2) return;
   for (int i = 0; i < KEY_COUNT; ++i) {
     const Key& k = KEYS[i];
     char symbol[2] = {i < 26 ? SYMBOLS[i] : char(0), 0};
@@ -156,6 +167,7 @@ int GhostUI::findKey(int x, int y) const {
 }
 
 void GhostUI::handleTouch(int x, int y) {
+  if (Radio.role() == 2) return;
   if (y >= 25 && y < 120 && lineCount_) {
     if (x < SCREEN_W / 2) historyOffset_ = min<size_t>(historyOffset_ + 2, lineCount_ - 1);
     else historyOffset_ = historyOffset_ > 2 ? historyOffset_ - 2 : 0;
@@ -242,6 +254,7 @@ void GhostUI::loop() {
   const uint32_t now = millis();
   if (now - lastHeaderMs_ > 350) {
     drawHeader();
+    if (Radio.role() == 2) dirtyChat_ = true;
     lastHeaderMs_ = now;
   }
   if (dirtyChat_) {

@@ -10,7 +10,7 @@ using namespace ghost;
 void setup() {
   Serial.begin(115200);
   delay(250);
-  Serial.printf("\nGHOSTLINK v%s / node %c\n", VERSION, GHOST_NODE_ROLE == 0 ? 'A' : 'B');
+  Serial.printf("\nGHOSTLINK v%s / node %c\n", VERSION, GHOST_NODE_ROLE == 2 ? 'R' : char('A' + GHOST_NODE_ROLE));
 
   if (!Radio.begin()) {
     Serial.println("[fatal] radio initialization failed");
@@ -34,7 +34,8 @@ static void serialConsole() {
       line.trim();
       if (overflow) Serial.println("[console] message too long; limit 160 bytes");
       else if (line == "/status") Radio.printStatus();
-      else if (line == "/help") Serial.println("Plain text: queue message. /status: link/outbox/counters. Messages stay queued while powered on.");
+      else if (line == "/neighbors") Radio.printNeighbors();
+      else if (line == "/help") Serial.println("Plain text: queue message. /status: mesh and channels. /neighbors: discovered CYDs. Queues survive restart.");
       else if (line.length()) UI.queueOutgoing(line);
       line = ""; overflow = false;
     } else if (ch == 8 || ch == 127) {
@@ -49,14 +50,9 @@ static void serialConsole() {
 void loop() {
   Radio.loop();
 
-  Ble.loop(Radio.role(), Radio.slot(), Radio.msIntoSlot(),
-           Radio.synced(), Radio.ageSincePeerMs());
-
-  uint32_t bleSlot = 0;
-  uint16_t bleMs = 0;
-  if (Ble.consumeSync(bleSlot, bleMs)) {
-    Radio.applyExternalSync(bleSlot, bleMs);
-  }
+  Ble.loop(Radio.role(), Radio.channel(), Radio.synced());
+  uint8_t candidate = 0;
+  if (Ble.consumeChannel(candidate)) Radio.applyCandidate(candidate);
 
   serialConsole();
   UI.loop();
