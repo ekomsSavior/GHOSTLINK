@@ -19,6 +19,8 @@ static const GhostUI::Key KEYS[] = {
   {  2, 219, 55, 19, "123", 0}, {60,219,135,19,"SPACE",' '}, {198,219,55,19,"<-",8}, {256,219,62,19,"SEND",13}
 };
 static constexpr int KEY_COUNT = sizeof(KEYS) / sizeof(KEYS[0]);
+static constexpr char SYMBOLS[] = "1234567890!@#$%&*().,?:/-+";
+static_assert(sizeof(SYMBOLS) - 1 == 26, "One symbol per letter key");
 
 void GhostUI::begin() {
   pinMode(TFT_BACKLIGHT, OUTPUT);
@@ -50,7 +52,9 @@ void GhostUI::drawHeader() {
 
   tft_.setTextColor(C_DIM, C_BG);
   tft_.setCursor(110, 4);
-  if (!Radio.configured()) {
+  if (!Radio.ready()) {
+    tft_.print("ERROR");
+  } else if (!Radio.configured()) {
     tft_.print("SETUP");
   } else if (Radio.hunting()) {
     tft_.print("HUNT");
@@ -67,7 +71,8 @@ void GhostUI::drawHeader() {
   tft_.print(Radio.lrEnabled() ? "LR" : "N");
 
   tft_.setCursor(238, 4);
-  if (Radio.rssi() > -126) tft_.printf("%ddBm", Radio.rssi());
+  if (Radio.queuedMessages()) tft_.printf("Q:%u", unsigned(Radio.queuedMessages()));
+  else if (Radio.rssi() > -126) tft_.printf("%ddBm", Radio.rssi());
   else tft_.print("--dBm");
 }
 
@@ -75,11 +80,11 @@ void GhostUI::drawChat() {
   tft_.fillRect(0, 25, 320, 94, C_BG);
   int y = 28;
 
-  if (!Radio.configured()) {
+  if (!Radio.ready() || !Radio.configured()) {
     tft_.setTextColor(C_FG, C_BG);
     tft_.setTextFont(2);
     tft_.setCursor(6, 31);
-    tft_.print("PAIR CONFIG REQUIRED");
+    tft_.print(Radio.ready() ? "PAIR CONFIG REQUIRED" : "RADIO ERROR - CHECK SERIAL");
     tft_.setTextColor(C_DIM, C_BG);
     tft_.setTextFont(1);
     tft_.setCursor(6, 52);
@@ -91,23 +96,27 @@ void GhostUI::drawChat() {
     return;
   }
 
-  const size_t start = lineCount_ > 5 ? lineCount_ - 5 : 0;
+  const size_t end = lineCount_ - historyOffset_;
+  const size_t start = end > 2 ? end - 2 : 0;
   tft_.setTextFont(1);
-  for (size_t i = start; i < lineCount_; ++i) {
+  for (size_t i = start; i < end; ++i) {
     const ChatLine& l = lines_[i];
     tft_.setTextColor(l.mine ? C_DIM : C_FG, C_BG);
-    tft_.setCursor(5, y);
-    tft_.print(l.mine ? "> " : "< ");
-
-    String shown = l.text;
-    if (shown.length() > 42) shown = shown.substring(0, 39) + "...";
-    tft_.print(shown);
-    if (l.mine) {
-      tft_.setCursor(304, y);
-      tft_.print(l.state);
+    for (size_t offset = 0; offset < l.text.length(); offset += 47) {
+      tft_.setCursor(5, y);
+      tft_.print(offset == 0 ? (l.mine ? "> " : "< ") : "  ");
+      tft_.print(l.text.substring(offset, offset + 47));
+      if (offset == 0 && l.mine) {
+        tft_.setCursor(304, y);
+        tft_.print(l.state);
+      }
+      y += 9;
     }
-    y += 17;
+    y += 4;
   }
+  tft_.setTextColor(C_DIM, C_BG);
+  tft_.setCursor(5, 111);
+  tft_.print("< older                  newer >");
 }
 
 void GhostUI::drawComposer() {
@@ -123,15 +132,18 @@ void GhostUI::drawComposer() {
 }
 
 void GhostUI::drawKeyboard() {
+  tft_.fillRect(0, 148, 320, 92, C_BG);
   for (int i = 0; i < KEY_COUNT; ++i) {
     const Key& k = KEYS[i];
+    char symbol[2] = {i < 26 ? SYMBOLS[i] : char(0), 0};
+    const char* label = symbols_ && i < 26 ? symbol : (i == 26 && symbols_ ? "ABC" : k.label);
     tft_.drawRect(k.x, k.y, k.w, k.h, C_LINE);
     tft_.setTextColor(C_FG, C_BG);
     tft_.setTextFont(1);
-    const int16_t tx = k.x + max<int16_t>(2, (k.w - int(strlen(k.label)) * 6) / 2);
+    const int16_t tx = k.x + max<int16_t>(2, (k.w - int(strlen(label)) * 6) / 2);
     const int16_t ty = k.y + 6;
     tft_.setCursor(tx, ty);
-    tft_.print(k.label);
+    tft_.print(label);
   }
 }
 
@@ -144,18 +156,23 @@ int GhostUI::findKey(int x, int y) const {
 }
 
 void GhostUI::handleTouch(int x, int y) {
+  if (y >= 25 && y < 120 && lineCount_) {
+    if (x < SCREEN_W / 2) historyOffset_ = min<size_t>(historyOffset_ + 2, lineCount_ - 1);
+    else historyOffset_ = historyOffset_ > 2 ? historyOffset_ - 2 : 0;
+    dirtyChat_ = true;
+    return;
+  }
   const int idx = findKey(x, y);
   if (idx < 0) return;
-  const char v = KEYS[idx].value;
+  const char v = symbols_ && idx < 26 ? SYMBOLS[idx] : KEYS[idx].value;
 
   if (v == 13) {
     sendComposer();
   } else if (v == 8) {
     if (composer_.length()) composer_.remove(composer_.length() - 1);
   } else if (v == 0) {
-    // Minimal punctuation palette for v0.1: tapping 123 inserts a period.
-    // Long-term this becomes a second keyboard page.
-    if (composer_.length() < MAX_TEXT) composer_ += '.';
+    symbols_ = !symbols_;
+    drawKeyboard();
   } else if (composer_.length() < MAX_TEXT) {
     composer_ += v;
   }
@@ -165,15 +182,27 @@ void GhostUI::handleTouch(int x, int y) {
 bool GhostUI::sendComposer() {
   composer_.trim();
   if (!composer_.length()) return false;
-  if (!Radio.sendMessage(composer_)) return false;
-  pushLine(true, composer_, Radio.pendingSeq(), '.');
+  if (!queueOutgoing(composer_)) return false;
   composer_ = "";
   dirtyChat_ = true;
   dirtyComposer_ = true;
   return true;
 }
 
+bool GhostUI::queueOutgoing(const String& text) {
+  if (!Radio.sendMessage(text)) {
+    Serial.println("[outbox] not queued: check pair/radio state, length, or full outbox; composer retained");
+    return false;
+  }
+  const auto seq = Radio.lastQueuedSeq();
+  pushLine(true, text, seq, '.');
+  dirtyChat_ = true;
+  Serial.printf("[queued #%lu] %s\n", (unsigned long)seq, text.c_str());
+  return true;
+}
+
 void GhostUI::pushLine(bool mine, const String& text, uint32_t seq, char state) {
+  historyOffset_ = 0;
   if (lineCount_ < CHAT_LINES) {
     lines_[lineCount_++] = {mine, text, seq, state};
   } else {
@@ -183,11 +212,13 @@ void GhostUI::pushLine(bool mine, const String& text, uint32_t seq, char state) 
 }
 
 void GhostUI::addIncoming(const String& text, uint32_t seq) {
+  Serial.printf("[received #%lu] %s\n", (unsigned long)seq, text.c_str());
   pushLine(false, text, seq, ' ');
   dirtyChat_ = true;
 }
 
 void GhostUI::markDelivery(uint32_t seq, bool ok) {
+  Serial.printf("[delivered #%lu] %s\n", (unsigned long)seq, ok ? "peer accepted" : "failed");
   for (size_t i = 0; i < lineCount_; ++i) {
     if (lines_[i].mine && lines_[i].seq == seq) {
       lines_[i].state = ok ? '+' : '!';

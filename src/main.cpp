@@ -20,7 +20,30 @@ void setup() {
   }
 
   UI.begin();
-  Ble.begin(Radio.role());
+  if (Radio.ready() && Radio.configured()) Ble.begin(Radio.role());
+  Serial.println("Type a message then Enter, /status for radio diagnostics, /help for help.");
+}
+
+static void serialConsole() {
+  static String line;
+  static bool overflow = false;
+  for (unsigned n = 0; n < 64 && Serial.available(); ++n) {
+    const char ch = char(Serial.read());
+    if (ch == '\r') continue;
+    if (ch == '\n') {
+      line.trim();
+      if (overflow) Serial.println("[console] message too long; limit 160 bytes");
+      else if (line == "/status") Radio.printStatus();
+      else if (line == "/help") Serial.println("Plain text: queue message. /status: link/outbox/counters. Messages stay queued while powered on.");
+      else if (line.length()) UI.queueOutgoing(line);
+      line = ""; overflow = false;
+    } else if (ch == 8 || ch == 127) {
+      if (line.length()) line.remove(line.length() - 1);
+    } else if (uint8_t(ch) >= 32) {
+      if (line.length() < MAX_TEXT) line += ch;
+      else overflow = true;
+    }
+  }
 }
 
 void loop() {
@@ -35,6 +58,7 @@ void loop() {
     Radio.applyExternalSync(bleSlot, bleMs);
   }
 
+  serialConsole();
   UI.loop();
   delay(4);
 }

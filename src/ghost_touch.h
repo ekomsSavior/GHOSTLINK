@@ -22,6 +22,7 @@ class GhostTouch {
   SPIClass spi_{VSPI};
   XPT2046_Touchscreen ts_{TOUCH_CS, TOUCH_IRQ};
   uint32_t lastTouchMs_ = 0;
+  bool pressed_ = false;
 };
 
 extern GhostTouch Touch;

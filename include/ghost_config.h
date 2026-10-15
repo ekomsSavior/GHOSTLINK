@@ -1,10 +1,11 @@
 #pragma once
-#include <Arduino.h>
+#include <cstddef>
+#include <cstdint>
 
 namespace ghost {
 
-constexpr char VERSION[] = "0.2.0";
-constexpr uint8_t PROTOCOL_VERSION = 2;
+constexpr char VERSION[] = "0.3.0";
+constexpr uint8_t PROTOCOL_VERSION = 3;
 
 // CYD / ESP32-2432S028R touchscreen pins.
 constexpr int TOUCH_IRQ  = 36;
@@ -41,12 +42,17 @@ constexpr int8_t WIFI_MAX_TX_POWER_QDBM = 80;
 // LR is slower than normal Wi-Fi, so give each channel a little more dwell
 // time than v0.1. This also improves edge-of-range message/ACK reliability.
 constexpr uint32_t HOP_INTERVAL_MS = 1800;
-constexpr uint32_t SYNC_INTERVAL_MS = 240;
+constexpr uint32_t SYNC_INTERVAL_MS = 180;
 constexpr uint32_t PEER_LOST_MS = 4600;
-constexpr uint32_t HUNT_DWELL_MS = 145;
-constexpr uint32_t ACK_TIMEOUT_MS = 1150;
-constexpr uint8_t  MAX_RETRIES = 10;
+constexpr uint32_t HUNT_DWELL_MS = 300;
+constexpr uint32_t ACK_TIMEOUT_MS = 1900;
+constexpr uint8_t  MAX_RETRIES = 6;
 constexpr uint32_t PING_INTERVAL_MS = 2200;
+constexpr uint32_t RETRY_REST_MS = 5000;
+constexpr uint32_t HOP_GUARD_MS = 60;
+constexpr uint32_t TX_SPACING_MS = 16;
+constexpr uint32_t RENDEZVOUS_EVERY_SLOTS = 8;
+constexpr uint32_t BLE_CANDIDATE_MS = 700;
 
 // BLE rendezvous is the rescue/control plane. It does NOT carry chat text and
 // it does not extend the Wi-Fi RF range. Its job is to help a lost follower
@@ -57,14 +63,15 @@ constexpr uint32_t BLE_RESCUE_AFTER_MS = 1800;
 constexpr uint32_t BLE_SCAN_MS = 900;
 constexpr uint32_t BLE_SCAN_GAP_MS = 1200;
 
-// When the follower has been lost for a long time, temporarily slow its Wi-Fi
-// hunt so BLE coexistence has more airtime to hear the signed rendezvous hint.
+// After a long loss, park on the pair's periodic Wi-Fi rendezvous channel.
 constexpr uint32_t DEEP_HUNT_AFTER_MS = 9000;
-constexpr uint32_t DEEP_HUNT_DWELL_MS = 260;
 
 // UI / protocol limits.
 constexpr size_t MAX_TEXT = 160;
-constexpr size_t CHAT_LINES = 7;
+constexpr size_t CHAT_LINES = 24;
 constexpr size_t RX_QUEUE_DEPTH = 8;
+constexpr size_t OUTBOX_DEPTH = 8;
+constexpr size_t MESSAGE_QUEUE_DEPTH = 8;
+constexpr size_t MESSAGE_DEDUP_DEPTH = 32;
 
 } // namespace ghost

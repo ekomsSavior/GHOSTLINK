@@ -21,6 +21,7 @@ class GhostUI {
   void loop();
   void addIncoming(const String& text, uint32_t seq);
   void markDelivery(uint32_t seq, bool ok);
+  bool queueOutgoing(const String& text);
 
  private:
   void drawAll();
@@ -36,10 +37,12 @@ class GhostUI {
   TFT_eSPI tft_;
   ChatLine lines_[CHAT_LINES];
   size_t lineCount_ = 0;
+  size_t historyOffset_ = 0;
   String composer_;
   uint32_t lastHeaderMs_ = 0;
   bool dirtyChat_ = true;
   bool dirtyComposer_ = true;
+  bool symbols_ = false;
 };
 
 extern GhostUI UI;

@@ -3,6 +3,7 @@
 // TFT_eSPI compile-time setup for the common ESP32-2432S028R CYD.
 #define USER_SETUP_LOADED
 #define ILI9341_DRIVER
+#define USE_HSPI_PORT // Touch uses VSPI with its own pin mapping.
 
 #define TFT_WIDTH  240
 #define TFT_HEIGHT 320

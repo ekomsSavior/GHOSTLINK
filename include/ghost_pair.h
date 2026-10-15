@@ -1,5 +1,8 @@
 #pragma once
 #include <Arduino.h>
+#if __has_include("ghost_pair_private.h")
+#include "ghost_pair_private.h"
+#else
 
 // ---------------------------------------------------------------------------
 // GHOSTLINK PAIR CONFIG
@@ -10,7 +13,7 @@
 // 2. Read each board's Wi-Fi station MAC from the splash screen / serial.
 // 3. Run:
 //      python3 tools/make_pair.py --a AA:BB:CC:DD:EE:01 --b AA:BB:CC:DD:EE:02
-// 4. Replace this file with the generated output.
+// 4. Save output to include/ghost_pair_private.h (ignored by Git).
 // 5. Flash env:ghost-a to board A, env:ghost-b to board B.
 // ---------------------------------------------------------------------------
 
@@ -26,8 +29,8 @@ constexpr uint8_t NODE_B_MAC[6] = {0, 0, 0, 0, 0, 0};
 constexpr uint8_t PMK[16] = {0};
 constexpr uint8_t LMK[16] = {0};
 
-// Pair-unique key used only to derive the deterministic Wi-Fi hop sequence and
-// authenticate BLE rendezvous hints.
+// Pair-unique master for hopping and domain-separated packet/BLE HMAC keys.
 constexpr uint8_t HOP_KEY[32] = {0};
 
 } // namespace ghostpair
+#endif

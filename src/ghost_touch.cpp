@@ -12,7 +12,8 @@ bool GhostTouch::begin() {
 }
 
 bool GhostTouch::read(TouchPoint& out) {
-  if (!ts_.touched()) return false;
+  if (!ts_.touched()) { pressed_ = false; return false; }
+  if (pressed_) return false;
   TS_Point p = ts_.getPoint();
   if (p.z < 80) return false;
 
@@ -27,6 +28,7 @@ bool GhostTouch::read(TouchPoint& out) {
   const uint32_t now = millis();
   if (now - lastTouchMs_ < 55) return false;
   lastTouchMs_ = now;
+  pressed_ = true;
 
   out = {int16_t(x), int16_t(y), int16_t(p.z)};
   return true;

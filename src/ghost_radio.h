@@ -1,70 +1,40 @@
 #pragma once
-
 #include <Arduino.h>
 #include <esp_now.h>
 #include <esp_idf_version.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
-#include "ghost_config.h"
+#include "ghost_protocol.h"
 
 namespace ghost {
-
-enum class PacketType : uint8_t {
-  SYNC = 1,
-  MESSAGE = 2,
-  ACK = 3,
-  PING = 4,
-};
-
-struct __attribute__((packed)) GhostPacket {
-  char magic[4];            // "GHST"
-  uint8_t version;
-  uint8_t type;
-  uint8_t senderRole;
-  uint8_t flags;
-  uint32_t seq;
-  uint32_t ack;
-  uint32_t slot;
-  uint16_t msIntoSlot;
-  uint16_t payloadLen;
-  char payload[MAX_TEXT + 1];
-};
-
-struct RxEvent {
-  GhostPacket packet;
-  int8_t rssi;
-};
+struct RxEvent { GhostPacket packet; uint32_t receivedAt; int8_t rssi; };
 
 class GhostRadio {
  public:
   bool begin();
   void loop();
-
   bool configured() const { return configured_; }
+  bool ready() const { return ready_; }
   bool linked() const;
-  bool synced() const { return role_ == 0 || synced_; }
+  bool synced() const { return configured_ && ready_ && (role_ == 0 || synced_); }
   bool hunting() const { return role_ == 1 && !synced_; }
   uint8_t channel() const { return currentChannel_; }
-  uint32_t slot() const { return currentSlot_; }
-  uint16_t msIntoSlot() const;
+  uint32_t slot() const { return clock_.slot; }
+  uint16_t msIntoSlot() const { return clock_.phase(millis()); }
   int8_t rssi() const { return lastRssi_; }
   bool lrEnabled() const { return lrEnabled_; }
   int8_t txPowerQdbm() const { return txPowerQdbm_; }
-  uint32_t ageSincePeerMs() const;
+  uint32_t ageSincePeerMs() const { return millis() - lastPeerRxMs_; }
   uint8_t role() const { return role_; }
-
+  size_t queuedMessages() const { return outbox_.size(); }
   bool sendMessage(const String& text);
-  bool popReceivedMessage(String& outText, uint32_t& seq);
-
-  bool hasPending() const { return pendingActive_; }
-  uint32_t pendingSeq() const { return pending_.seq; }
+  bool popReceivedMessage(String& text, uint32_t& seq);
+  uint32_t lastQueuedSeq() const { return lastQueuedSeq_; }
   bool consumeDeliveryNotice(uint32_t& seq, bool& success);
-
   String localMacString() const;
   String peerMacString() const;
-
-  // Called by BLE rendezvous after validating a signed hint.
-  void applyExternalSync(uint32_t slot, uint16_t msIntoSlot);
+  void printStatus() const;
+  void applyExternalSync(uint32_t slot, uint16_t phase);
 
  private:
   static GhostRadio* instance_;
@@ -75,58 +45,40 @@ class GhostRadio {
       const uint8_t* mac,
 #endif
       const uint8_t* data, int len);
-
-  void onReceive(const uint8_t* src, const uint8_t* data, int len, int8_t rssi);
-  void drainRx();
+  static void sentThunk(const uint8_t*, esp_now_send_status_t status);
+  void onReceive(const uint8_t* mac, const uint8_t* data, int len, int8_t rssi);
   void processPacket(const RxEvent& ev);
-  void setChannel(uint8_t ch);
-  void configurePhy();
+  bool setChannel(uint8_t ch);
+  bool configurePhy();
   uint8_t channelForSlot(uint32_t slot) const;
-  void leaderLoop(uint32_t now);
-  void followerLoop(uint32_t now);
-  void enterHunt();
-  void hopFollower(uint32_t now);
-  void sendSync(uint32_t now);
-  void sendPing();
-  bool sendPacket(GhostPacket& p);
-  GhostPacket makePacket(PacketType type);
-  void sendAck(uint32_t seq);
-  bool srcIsPeer(const uint8_t* src) const;
+  uint8_t rendezvousChannel() const;
+  void enterHunt(uint32_t now);
+  void updateChannel(uint32_t now);
+  GhostPacket makePacket(PacketType type) const;
+  bool sendPacket(GhostPacket& packet, bool urgent);
+  void signPacket(GhostPacket& packet) const;
+  bool verifyPacket(const GhostPacket& packet) const;
   const uint8_t* peerMac() const;
-
-  bool configured_ = false;
-  uint8_t role_ = GHOST_NODE_ROLE;
-  uint8_t currentChannel_ = 0;
-  uint32_t currentSlot_ = 1;
-  uint32_t slotStartMs_ = 0;
-  uint32_t lastHopMs_ = 0;
-  uint32_t lastSyncTxMs_ = 0;
-  uint32_t lastPingMs_ = 0;
-  uint32_t lastPeerRxMs_ = 0;
-  int8_t lastRssi_ = -127;
-  bool synced_ = false;
-  uint8_t huntChannel_ = 1;
-  uint32_t huntSinceMs_ = 0;
-  uint32_t huntStartedMs_ = 0;
-  bool lrEnabled_ = false;
-  int8_t txPowerQdbm_ = 0;
-
-  uint32_t txSeq_ = 1;
-  uint32_t lastRxMessageSeq_ = 0;
-
-  GhostPacket pending_{};
-  bool pendingActive_ = false;
-  uint8_t pendingRetries_ = 0;
-  uint32_t pendingLastTxMs_ = 0;
-
-  bool deliveryNotice_ = false;
-  uint32_t deliverySeq_ = 0;
-  bool deliverySuccess_ = false;
-
-  QueueHandle_t rxQueue_ = nullptr;
-  QueueHandle_t messageQueue_ = nullptr;
+  const uint8_t role_ = GHOST_NODE_ROLE;
+  bool configured_ = false, ready_ = false, synced_ = false, peerSeen_ = false;
+  bool lrEnabled_ = false, txBusy_ = false, candidate_ = false;
+  uint8_t currentChannel_ = 0, huntChannel_ = 1;
+  int8_t lastRssi_ = -127, txPowerQdbm_ = 0;
+  SlotClock clock_;
+  uint32_t session_ = 0, frame_ = 0, messageSeq_ = 0, lastQueuedSeq_ = 0;
+  uint32_t lastPeerRxMs_ = 0, lastSyncTxMs_ = 0, lastPingMs_ = 0, lastTxMs_ = 0;
+  uint32_t huntStartedMs_ = 0, huntSinceMs_ = 0, candidateSinceMs_ = 0;
+  uint8_t candidateChannel_ = 1;
+  uint32_t retryStartedMs_ = 0, retryRestStartedMs_ = 0;
+  uint8_t attempts_ = 0;
+  bool retryRest_ = false;
+  bool ackPending_ = false;
+  uint32_t ackSeq_ = 0, ackSession_ = 0;
+  Outbox outbox_;
+  ReplayWindow replay_;
+  MessageDedup dedup_;
+  uint32_t txCount_ = 0, txFailed_ = 0, rxCount_ = 0, duplicateCount_ = 0, rejectedCount_ = 0;
+  QueueHandle_t rxQueue_ = nullptr, messageQueue_ = nullptr, txQueue_ = nullptr, deliveryQueue_ = nullptr;
 };
-
 extern GhostRadio Radio;
-
 } // namespace ghost

@@ -5,7 +5,7 @@ import secrets
 
 def parse_mac(s: str):
     parts = s.split(":")
-    if len(parts) != 6:
+    if len(parts) != 6 or any(len(part) != 2 for part in parts):
         raise argparse.ArgumentTypeError("MAC must look like AA:BB:CC:DD:EE:FF")
     try:
         b = bytes(int(x, 16) for x in parts)
@@ -13,6 +13,8 @@ def parse_mac(s: str):
         raise argparse.ArgumentTypeError("invalid hex in MAC") from exc
     if len(b) != 6:
         raise argparse.ArgumentTypeError("MAC must be 6 bytes")
+    if b == bytes(6) or b[0] & 1:
+        raise argparse.ArgumentTypeError("MAC must be a nonzero unicast station address")
     return b
 
 
@@ -25,6 +27,8 @@ def main():
     p.add_argument("--a", required=True, type=parse_mac, help="node A station MAC")
     p.add_argument("--b", required=True, type=parse_mac, help="node B station MAC")
     args = p.parse_args()
+    if args.a == args.b:
+        p.error("A and B must have different station MAC addresses")
 
     network_id = int.from_bytes(secrets.token_bytes(2), "big") or 1
     pmk = secrets.token_bytes(16)
