@@ -1,4 +1,4 @@
-# GHOSTLINK 0.3
+# GHOSTLINK
 
 Two ESP32 CYDs, two-way text, no router, SIM, phone, server or internet at runtime.
 
@@ -6,30 +6,8 @@ A is the **anchor** and B is the **hunter**. They follow a pair-specific channel
 schedule, exchange encrypted ESP-NOW messages, and automatically find each
 other again after a radio outage. Both boards can send and receive.
 
-## What changed in 0.3
-
-- Eight-message RAM outbox: compose while disconnected; transmission resumes
-  when the peer returns. Messages are kept while the board stays powered.
-- Delivery confirmation only after the peer accepts the message into its
-  application queue. Lost ACKs cause retries without repeated chat lines.
-- Random boot identities, ACKs tied to the sender's boot, a duplicate cache and
-  a bounded frame replay window.
-- Authenticated packet metadata and text inside ESP-NOW encrypted unicast.
-- Separate A/B message transmission windows and a guard around channel changes.
-  One ESP-NOW transmission at a time; callbacks only pass events to queues.
-- Receive timestamps account for time spent waiting in the main loop.
-- A pair-specific rendezvous channel every eighth 1.8-second hop. After nine
-  seconds of hunting, B waits there. This recovery does not depend on BLE.
-- BLE hints suggest a channel, then require authenticated Wi-Fi traffic before
-  showing synchronization or LINK. Wi-Fi and BLE share the ESP32 radio.
-- Explicit ESP-NOW LR 250K transmit rate, checked initialization and power-cap
-  readback. Both boards use the same profile; a configuration error is visible.
-- Real 123/ABC keyboard pages, touch press/release handling, outbox count and
-  serial message/status commands.
-- Separate HSPI display and VSPI touch peripherals, pinned build dependencies,
-  and an ignored private pair-config file.
-
-**Both boards must be upgraded together. Protocol v3 is incompatible with v0.2.**
+**A fresh clone contains the complete project. No previous GHOSTLINK release
+is needed.** Build both boards from the same checkout and pair them once.
 
 ## Hardware
 
@@ -46,21 +24,44 @@ CYD revisions vary. Display configuration is in
 `include/ghost_config.h`. Other ESP32 boards require board/display
 adaptation; this is not a universal ESP32-family build.
 
-## Build and get the two MAC addresses
+## Clone and build
 
-Install Python 3 and PlatformIO (the tested CLI version is in
-`requirements-dev.txt`), then:
+You need Git, Python 3, and PlatformIO with the `pio` command available
+(or the PlatformIO IDE terminal).
 
 ```sh
-python3 -m venv .venv
-.venv/bin/pip install -r requirements-dev.txt
-.venv/bin/pio run -e ghost-a -e ghost-b
-.venv/bin/pio run -e ghost-a -t upload --upload-port /dev/ttyUSB0
-.venv/bin/pio device monitor --port /dev/ttyUSB0
+git clone https://github.com/ekomsSavior/GHOSTLINK.git
+cd GHOSTLINK
+pio run -e ghost-a -e ghost-b
 ```
 
-The initial build deliberately has no pair keys. It shows **SETUP** and prints
-the board's station MAC. Read both actual MACs before generating a pair.
+You can also clone the same project from
+[Gitea](https://git.churchofmalware.org/ek0mssavi0r/GHOSTLINK).
+Choose either repository; you only need one checkout. PlatformIO downloads
+the pinned ESP32 toolchain and libraries on the first build. Internet is
+needed for those downloads, but the boards communicate entirely offline.
+
+## Read the two board addresses
+
+Connect both boards with USB data cables. Replace the example serial ports
+below with their actual ports (`pio device list` shows connected devices).
+
+Flash board A and read its station MAC:
+
+```sh
+pio run -e ghost-a -t upload --upload-port /dev/ttyUSB0
+pio device monitor --port /dev/ttyUSB0
+```
+
+Exit the monitor with Ctrl+C, then flash board B and read its station MAC:
+
+```sh
+pio run -e ghost-b -t upload --upload-port /dev/ttyUSB1
+pio device monitor --port /dev/ttyUSB1
+```
+
+The boards show **SETUP** until paired. Record both MAC addresses, then
+exit the monitor before continuing.
 
 ## Pair and flash
 
@@ -71,8 +72,8 @@ python3 tools/make_pair.py \
   --a AA:BB:CC:DD:EE:01 \
   --b AA:BB:CC:DD:EE:02 \
   > include/ghost_pair_private.h
-.venv/bin/pio run -e ghost-a -t upload --upload-port /dev/ttyUSB0
-.venv/bin/pio run -e ghost-b -t upload --upload-port /dev/ttyUSB1
+pio run -e ghost-a -t upload --upload-port /dev/ttyUSB0
+pio run -e ghost-b -t upload --upload-port /dev/ttyUSB1
 ```
 
 Replace those example MACs and serial ports. The firmware verifies that its
@@ -116,33 +117,6 @@ After deep hunt begins, A offers a rendezvous slot every **14.4 seconds**.
 That is a scheduled opportunity, not a guaranteed recovery deadline under loss
 or interference. BLE can shorten discovery nearby. Disable
 `ENABLE_BLE_RESCUE` to compare Wi-Fi-only recovery on the bench.
-
-## Validation and limitations
-
-Both firmware roles have been compiled in setup and synthetic paired
-configurations. Host tests cover timing wrap, delayed sync processing, packet
-validation, stale ACKs, peer reboots, duplicate frames, receive-queue
-backpressure and 400 simulated deliveries with data/ACK loss and outages.
-They do not simulate RF propagation or prove over-the-air performance.
-
-Run the protocol tests:
-
-```sh
-python3 tools/test_host.py
-```
-
-No physical ESP32 was attached during this update. Follow
-[the bench checklist](docs/BENCH_TEST.md) before relying on the link.
-
-Outbox, chat history and duplicate/replay state are RAM-only. Power loss clears
-them; a receiver reboot after a lost ACK can display the retried message again.
-There is no forward secrecy or persistent anti-replay guarantee across reboots.
-Keys are compiled into firmware; this build does not enable secure boot or
-flash encryption. Serial diagnostics expose local chat text. RSSI is unavailable
-through the pinned Arduino 2.x ESP-NOW receive callback and displays "--" there.
-
-See [protocol details](docs/PROTOCOL.md) and
-[source recovery provenance](docs/SOURCE_PROVENANCE.md).
 
 ## License
 
