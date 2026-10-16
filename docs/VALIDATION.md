@@ -64,3 +64,18 @@ Use BENCH_TEST.md for the physical tests. All synthetic private configuration
 headers were removed after compilation; no test keys or configured firmware
 are included in the published source. README intentionally contains setup and
 operation instructions rather than this engineering record.
+
+## Serial upload layout regression
+
+The first board upload exposed a mismatch: the partition table expected the app
+at 0x30000 while the Arduino uploader wrote it at 0x10000 (and the OTA initializer
+at 0xE000 instead of 0x20000). This produced a bootloader reset loop before the
+application banner. The table now uses the uploader addresses and puts 128 KiB
+of NVS after the application slots. The build guard reads the actual PlatformIO
+app/extra-image addresses; regression tests reject wrong app, OTA, and overlap
+layouts. Build success alone is not a physical boot or radio test.
+
+The corrected table passed builds for ghost-a, ghost-b, and ghost-relay. Four
+flash-layout regression tests passed, and the generated A/B partition binaries
+were decoded to confirm the app, OTA data, and NVS addresses. The paired-board
+helper was syntax/import checked; its hardware result must come from a real run.

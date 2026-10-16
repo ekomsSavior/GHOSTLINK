@@ -4,6 +4,15 @@ Use classic 4 MB ESP32-2432S028R boards. Start with two endpoints; add at least
 one additional CYD for a real relay experiment. Record firmware commit, board
 revision, placement, height, obstacles, channel plan, and delivery times.
 
+For two connected CH340 CYDs, `python3 tools/flash_pair.py --a-mac <A MAC>`
+reads both chip addresses, builds and uploads both roles with one private
+configuration, then verifies a message and destination receipt in each direction.
+Run it with the Python installation that has PlatformIO and pyserial available.
+Use `--port` twice if port detection is ambiguous. `--reset-storage` is only for
+initial setup or intentional recovery: it clears stored messages on both boards.
+The script preserves an existing matching pairing and refuses a different pair.
+It does not certify the screens, touch calibration, or outdoor range.
+
 1. Build and flash the current checkout using the README. Match A/B to their
    station MACs. Export relay membership with make_relay.py; do not copy the
    endpoint key to a relay. Verify the role, MAC, storage status, and channel in

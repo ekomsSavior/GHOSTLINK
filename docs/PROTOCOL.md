@@ -122,7 +122,9 @@ and protocol. Failed writes roll RAM changes back. A new message is acknowledged
 only after its inbox admission and duplicate receipt are saved. Provisioning a
 new identity starts a new queue; corrupt/incompatible stored state stops radio
 initialization rather than silently dropping it. The 4 MB partition table
-allocates 92 KiB to NVS and two 1856 KiB application slots.
+allocates 128 KiB to NVS and two 1856 KiB application slots. The application
+starts at 0x10000 and the OTA initializer at 0xE000, matching the Arduino
+uploader. A build guard checks the actual uploader addresses against this table.
 
 Chat already consumed by the UI is RAM-only. Duplicate history is bounded to
 32 identities, not permanent replay protection. There is no forward secrecy,
