@@ -112,3 +112,28 @@ Each resulting binary contains its expected display-profile identification.
 The helper CLI/import check and Git whitespace check passed. The updated
 paired-board startup, display, touch, and over-the-air delivery results remain
 pending the physical reflash.
+
+## Physical startup and relay provisioning follow-up
+
+The paired v0.4.1 run completed startup on both ST7789 boards, initialized BLE,
+and received one test message plus the corresponding destination acknowledgment
+in each direction. The operator also reported correct screen coverage and
+successful manual messaging after automatic reconnection. This is distinct from
+a measured range or relay-forwarding result.
+
+The third CYD's initial full-flash read failed with an invalid serial packet
+header at 460800 baud before any erase or write. Reading in verified 64 KiB
+blocks at 115200 baud completed its 4 MB backup and upload. Its startup log
+reported configured role R, ST7789 320x240, BLE ready, synchronization, and both
+endpoints as neighbors, with no transmit or storage faults during the check.
+The relay forwarding/range experiment remains pending.
+
+The portable relay helper retains those settings and retries a failed read at
+57600 baud on the same open serial device. Host tests cover endpoint exclusion,
+ambiguous identity, a changed target on retry, rejected corrupt/incomplete
+backups, generated partition addresses, and preserving existing relay storage.
+
+The portable helper passed a full configured ST7789 relay build using a new
+synthetic pair, image checksums, and decoded partition-table checks. All 18
+Python tooling/layout tests and the CLI/import checks passed. No firmware
+changes or reflashing are required for the already configured A/B/R boards.

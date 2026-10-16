@@ -102,18 +102,41 @@ creates different keys. The private file is ignored by Git.
 
 ## Add CYD relays
 
-Export relay membership from the existing endpoint configuration:
+Keep the existing endpoint configuration in this checkout. Connect the additional
+CYD, close serial monitors, and keep A or B powered nearby. For a dual-USB ST7789
+board, run:
+
+```sh
+python3 tools/flash_relay.py --display st7789
+```
+
+Use `--display ili9341` for the original display. The helper exports relay
+membership, builds the firmware, identifies the board by its hardware MAC,
+backs up its full flash, and uploads the relay. A and B are excluded as upload
+targets. If more than one extra board is connected, select one with
+`--port /dev/ttyUSB2`, replacing the example port.
+
+Run the helper as your normal user. On Linux it can request a sudo password
+for access to the detected serial ports. The backup takes several minutes;
+progress is printed as each block completes. Logs and flash backups are saved
+under `.pio/bench/`. A successful startup check means the relay discovered a
+configured endpoint. Its screen shows **CYD RELAY**, neighbors, and stored packets.
+
+Updates preserve stored relay packets when the partition layout matches.
+Converting a board with a different layout initializes its message storage after
+the backup. Use `--reset-storage` only when you intend to clear stored packets.
+To prepare firmware without connecting a board, add `--build-only`.
+
+For manual provisioning, export membership and upload the appropriate profile:
 
 ```sh
 python3 tools/make_relay.py include/ghost_pair_private.h \
   > include/ghost_relay_private.h
-pio run -e ghost-relay -t upload --upload-port /dev/ttyUSB2
+pio run -e ghost-relay-st7789 -t upload --upload-port /dev/ttyUSB2
 ```
 
-Flash `ghost-relay` to each additional CYD, changing the port for each board.
 No relay MAC list is needed. Relays discover other configured CYDs automatically
-and display their neighbor count and stored packets. They can forward and store
-messages without the endpoints' chat decryption key.
+and can forward and store messages without the endpoints' chat decryption key.
 
 Keep both private configuration files and configured firmware private. Share
 only the relay configuration with someone provisioning a relay for your network.

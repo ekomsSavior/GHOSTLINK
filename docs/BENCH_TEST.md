@@ -17,6 +17,24 @@ Confirm `[display]` reports the intended driver and 320x240, and
 `[ble] rendezvous ready` appears on both configured boards.
 It does not certify the screens, touch calibration, or outdoor range.
 
+For an additional CYD, run `python3 tools/flash_relay.py --display st7789`
+(or `--display ili9341`). The helper derives membership from the existing pair,
+refuses to upload to either endpoint, saves a verified full-flash backup, and
+checks configured role R, the selected display, BLE startup, and endpoint
+discovery. Use `--build-only` to compile and verify the images without serial
+access. The standalone Python tests exercise serial-error retries, endpoint
+protection, backup integrity, and preservation of an existing relay's NVS:
+
+```sh
+python3 -m unittest discover -s tests -p 'test_*.py'
+```
+
+The relay helper reads 64 KiB backup blocks at 115200 baud. A failed transfer
+restarts the loader on the same open device and retries at 57600 baud, checking
+its MAC again. No erase/upload occurs until the entire backup verifies. A
+changed partition table initializes NVS; an unchanged table preserves it unless
+`--reset-storage` was requested. Backup files and configured firmware remain local.
+
 1. Build and flash the current checkout using the README. Match A/B to their
    station MACs. Export relay membership with make_relay.py; do not copy the
    endpoint key to a relay. Verify the role, MAC, storage status, and channel in
