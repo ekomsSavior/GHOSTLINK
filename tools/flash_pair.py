@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Provision two connected classic CYDs and verify serial-observed RF delivery."""
 import argparse
+import codecs
 from contextlib import ExitStack
 from datetime import datetime
 import os
@@ -28,6 +29,7 @@ def config_mac(text, name):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--a-mac', required=True, help='Previously identified station MAC of board A')
+    parser.add_argument('--display', choices=('ili9341', 'st7789'), default='ili9341', help='Panel controller: dual-USB CYDs commonly use st7789')
     parser.add_argument('--port', action='append', help='Explicit port; supply twice, or auto-detect two CH340 CYDs')
     parser.add_argument('--reset-storage', action='store_true', help='Erase the message-storage partition on both boards for initial setup/recovery')
     parser.add_argument('--log-dir', type=Path, default=ROOT / '.pio' / 'bench')
@@ -95,7 +97,10 @@ def main():
             with os.fdopen(fd, 'w') as config:
                 config.write(text)
             emit('Created one private pairing for both boards. Keys stay on this machine.\n')
-        run([pio, 'run', '-e', 'ghost-a', '-e', 'ghost-b'])
+        suffix = '-st7789' if args.display == 'st7789' else ''
+        environments = {role: 'ghost-' + role.lower() + suffix for role in role_ports}
+        emit('Display profile: ' + args.display + '\n')
+        run([pio, 'run', '-e', environments['A'], '-e', environments['B']])
         for role, port in role_ports.items():
             if identify(port) != identities[port]:
                 raise RuntimeError('A serial device changed during the build; no write to this port')
@@ -104,11 +109,18 @@ def main():
                 nvs = next(p for p in read_partitions(ROOT / 'partitions.csv') if p[0] == 'nvs')
                 emit(f'Initializing {role} message storage.\n')
                 esp(port, 'erase_region', hex(nvs[3]), hex(nvs[4]))
-            run([pio, 'run', '-e', 'ghost-' + role.lower(), '-t', 'upload', '--upload-port', port])
+            run([pio, 'run', '-e', environments[role], '-t', 'upload', '--upload-port', port])
         with ExitStack() as stack:
             boards = {}
             buffers = {'A': '', 'B': ''}
+            pending = {'A': '', 'B': ''}
+            board_logs = {}
+            decoders = {}
             for role, port in role_ports.items():
+                board_path = args.log_dir / ('board-' + role.lower() + '-' + stamp + '.log')
+                board_logs[role] = stack.enter_context(board_path.open('w'))
+                decoders[role] = codecs.getincrementaldecoder('utf-8')('replace')
+                emit('Serial log ' + role + ': ' + str(board_path) + '\n')
                 board = serial.Serial(port=None, baudrate=115200, timeout=0, write_timeout=2, exclusive=True)
                 board.port = port
                 board.dtr = False
@@ -127,10 +139,15 @@ def main():
                 status_at = time.monotonic() + 4
                 while time.monotonic() < deadline:
                     for role, board in boards.items():
-                        data = board.read(8192).decode('utf-8', errors='replace')
+                        data = decoders[role].decode(board.read(8192))
                         if data:
                             buffers[role] += data
-                            emit('[' + role + '] ' + data)
+                            board_logs[role].write(data)
+                            board_logs[role].flush()
+                            pending[role] += data
+                            while '\n' in pending[role]:
+                                line, pending[role] = pending[role].split('\n', 1)
+                                emit('[' + role + '] ' + line.rstrip('\r') + '\n')
                     if time.monotonic() >= status_at:
                         for board in boards.values():
                             board.write(b'/status\n')
@@ -145,7 +162,7 @@ def main():
             for role in boards:
                 if f'role={role} ready=1 configured=1' not in buffers[role]:
                     raise RuntimeError(role + ' did not start correctly; keep both boards connected and share this log')
-                if '[fatal]' in buffers[role] or 'Guru Meditation' in buffers[role] or buffers[role].count('rst:0x') > 2:
+                if any(marker in buffers[role] for marker in ('[fatal]', 'Guru Meditation', 'abort() was called', 'missing send callback')) or buffers[role].count('rst:0x') > 2:
                     raise RuntimeError(role + ' reported an unstable startup; see log')
             buffers = {'A': '', 'B': ''}
             token = str(time.time_ns())[-10:]

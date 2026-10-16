@@ -59,7 +59,8 @@ Configured builds use approximately 21.7% of static RAM and 56.2% of their
 TFT_eSPI's optional built-in touch warning is expected because this project uses
 XPT2046_Touchscreen on a separate SPI peripheral.
 
-No /dev/ttyUSB* or /dev/ttyACM* ESP32 device was connected during this work.
+No /dev/ttyUSB* or /dev/ttyACM* ESP32 device was connected during the initial
+v0.4.0 host/build checks above. Later physical bring-up findings follow below.
 Use BENCH_TEST.md for the physical tests. All synthetic private configuration
 headers were removed after compilation; no test keys or configured firmware
 are included in the published source. README intentionally contains setup and
@@ -79,3 +80,35 @@ The corrected table passed builds for ghost-a, ghost-b, and ghost-relay. Four
 flash-layout regression tests passed, and the generated A/B partition binaries
 were decoded to confirm the app, OTA data, and NVS addresses. The paired-board
 helper was syntax/import checked; its hardware result must come from a real run.
+
+## Dual-USB display and Bluetooth startup repair (0.4.1)
+
+The paired upload reached application initialization on both physical boards,
+then aborted inside `coex_core_enable` / `coex_enable`, called by
+`esp_bt_controller_enable` during `NimBLEDevice::init`. Both exact flashed ELFs
+were used to decode the saved serial backtraces. `WiFi.setSleep(false)` selected
+WIFI_PS_NONE immediately before this startup. The failure matches the
+[Espressif coexistence issue](https://github.com/espressif/esp-idf/issues/9595).
+The repair selects WIFI_PS_MIN_MODEM when BLE rescue is enabled, checks the
+ESP-IDF return code, and verifies power-save mode before initializing BLE.
+The missing/corrupt core-dump warning followed the panic; it was not the first
+failure. No flash erasure or partition change is part of this repair.
+
+The supplied board photograph shows ESP32-2432S028 with USB-C and Micro-USB.
+The new ST7789 profile follows the pin mapping, BGR order, and inversion setting
+in the [CYD2USB display configuration](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display/blob/main/DisplayConfig/CYD2USB/User_Setup.h).
+TFT_eSPI selects SPI mode 3 for this controller. The original ILI9341 profile
+remains available. Display coverage and touch alignment require observation
+after the corrected firmware is flashed.
+
+Protocol version remains 4; the existing pair keys and persisted queues are
+retained. The paired flashing helper now supports the display profile and saves
+separate, unfragmented serial logs for each board. A successful build is not
+evidence that this repair has passed the physical two-way delivery test.
+
+Repair checks: configured `ghost-a-st7789`, `ghost-b-st7789`, and original
+`ghost-a` builds passed; the `ghost-relay-st7789` setup build also passed.
+Each resulting binary contains its expected display-profile identification.
+The helper CLI/import check and Git whitespace check passed. The updated
+paired-board startup, display, touch, and over-the-air delivery results remain
+pending the physical reflash.

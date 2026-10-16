@@ -1,8 +1,16 @@
 #pragma once
 
-// TFT_eSPI compile-time setup for the common ESP32-2432S028R CYD.
+// TFT_eSPI setup for original ILI9341 and dual-USB ST7789 2.8-inch CYDs.
 #define USER_SETUP_LOADED
+#if defined(GHOST_DISPLAY_ST7789)
+#define ST7789_DRIVER
+#define TFT_RGB_ORDER TFT_BGR
+#define TFT_INVERSION_OFF
+#define USER_SETUP_INFO "GHOSTLINK CYD ST7789"
+#else
 #define ILI9341_DRIVER
+#define USER_SETUP_INFO "GHOSTLINK CYD ILI9341"
+#endif
 #define USE_HSPI_PORT // Touch uses VSPI with its own pin mapping.
 
 #define TFT_WIDTH  240

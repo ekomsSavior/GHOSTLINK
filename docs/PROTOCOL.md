@@ -111,7 +111,10 @@ authenticated with a separately derived key and 64-bit tag. All synchronized
 nodes may advertise. Unsynchronized nodes scan briefly. Hints expire locally
 and only suggest a temporary candidate channel; fresh authenticated Wi-Fi root
 pulses establish synchronization. Captured BLE hints can be replayed, and BLE
-shares the ESP32 radio with Wi-Fi.
+shares the ESP32 radio with Wi-Fi. When BLE rescue is enabled, Wi-Fi uses
+WIFI_PS_MIN_MODEM because the pinned ESP-IDF 4.4 Bluetooth controller aborts
+during coexistence startup if WIFI_PS_NONE is selected. BLE checks this
+prerequisite before controller initialization and reports initialization errors.
 
 ## Durable state and failure handling
 

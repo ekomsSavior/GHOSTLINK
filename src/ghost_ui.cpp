@@ -28,6 +28,7 @@ void GhostUI::begin() {
 
   tft_.init();
   tft_.setRotation(1);
+  Serial.printf("[display] %s %dx%d rotation=1\n", USER_SETUP_INFO, tft_.width(), tft_.height());
   tft_.setTextWrap(false);
   tft_.fillScreen(C_BG);
   for (size_t i = 0; i < OUTBOX_DEPTH; ++i) {

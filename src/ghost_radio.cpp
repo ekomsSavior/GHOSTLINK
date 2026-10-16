@@ -41,7 +41,9 @@ bool GhostRadio::begin() {
   instance_ = this;
   memcpy(a_.bytes, ghostpair::NODE_A_MAC, 6); memcpy(b_.bytes, ghostpair::NODE_B_MAC, 6);
   if (!WiFi.mode(WIFI_STA)) return false;
-  WiFi.setAutoReconnect(false); WiFi.disconnect(false, false); WiFi.setSleep(false);
+  WiFi.setAutoReconnect(false); WiFi.disconnect(false, false);
+  // IDF 4.4 aborts during Bluetooth controller enable if Wi-Fi modem sleep is off.
+  if (esp_wifi_set_ps(ENABLE_BLE_RESCUE ? WIFI_PS_MIN_MODEM : WIFI_PS_NONE) != ESP_OK) return false;
   esp_wifi_get_mac(WIFI_IF_STA, local_.bytes);
   Serial.printf("[radio] local STA MAC: %s\n", localMacString().c_str());
   if (GHOST_PAIR_CONFIGURED != 1) { ready_ = true; Serial.println("[radio] SETUP: provision endpoints or a relay"); return true; }

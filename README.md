@@ -17,8 +17,17 @@ is needed.** Build every participating board from this checkout.
 
 ## Hardware
 
-The display target is the classic **ESP32-2432S028R 2.8-inch CYD** with
-ESP32-WROOM-32, ILI9341 display, XPT2046 resistive touch, and 4 MB flash.
+Use a **2.8-inch ESP32-2432S028R CYD** with the original ESP32,
+XPT2046 resistive touch, and 4 MB flash. Select the profile for its display:
+
+| Display variant | Board A | Board B | Relay |
+| --- | --- | --- | --- |
+| Original ILI9341 | `ghost-a` | `ghost-b` | `ghost-relay` |
+| ST7789, commonly USB-C + Micro-USB | `ghost-a-st7789` | `ghost-b-st7789` | `ghost-relay-st7789` |
+
+Both profiles use a 320 × 240 landscape screen. The commands below use the
+original profile; for an ST7789 board, use its `-st7789` environment in every
+build and upload command.
 
 | Peripheral | Pins | SPI |
 | --- | --- | --- |
@@ -37,6 +46,12 @@ You need Git, Python 3, and PlatformIO with the `pio` command available
 git clone https://github.com/ekomsSavior/GHOSTLINK.git
 cd GHOSTLINK
 pio run -e ghost-a -e ghost-b
+```
+
+For the dual-USB ST7789 boards, build with:
+
+```sh
+pio run -e ghost-a-st7789 -e ghost-b-st7789
 ```
 
 The same project is available on

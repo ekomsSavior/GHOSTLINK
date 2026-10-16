@@ -4,7 +4,7 @@
 
 namespace ghost {
 
-constexpr char VERSION[] = "0.4.0";
+constexpr char VERSION[] = "0.4.1";
 constexpr uint8_t PROTOCOL_VERSION = 4;
 
 // CYD / ESP32-2432S028R touchscreen pins.

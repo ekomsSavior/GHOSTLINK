@@ -10,7 +10,11 @@ configuration, then verifies a message and destination receipt in each direction
 Run it with the Python installation that has PlatformIO and pyserial available.
 Use `--port` twice if port detection is ambiguous. `--reset-storage` is only for
 initial setup or intentional recovery: it clears stored messages on both boards.
+Add `--display st7789` for the dual-USB ST7789 boards; the default is ILI9341.
 The script preserves an existing matching pairing and refuses a different pair.
+Each run saves separate A/B serial logs alongside the combined build/flash log.
+Confirm `[display]` reports the intended driver and 320x240, and
+`[ble] rendezvous ready` appears on both configured boards.
 It does not certify the screens, touch calibration, or outdoor range.
 
 1. Build and flash the current checkout using the README. Match A/B to their

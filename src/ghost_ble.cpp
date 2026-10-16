@@ -2,6 +2,7 @@
 #include "ghost_crypto.h"
 #include "ghost_pair.h"
 #include <NimBLEDevice.h>
+#include <esp_wifi.h>
 namespace ghost {
 GhostBle Ble;
 static GhostBle* instance = nullptr;
@@ -32,8 +33,20 @@ class GhostScanCallbacks final : public NimBLEScanCallbacks {
 static GhostScanCallbacks callbacks;
 void GhostBle::begin(uint8_t) {
   if (!ENABLE_BLE_RESCUE || GHOST_PAIR_CONFIGURED != 1) return;
-  hints_ = xQueueCreate(1, sizeof(HintEvent)); if (!hints_) return;
-  instance = this; NimBLEDevice::init("");
+  // Check before entering the controller: its coexistence assertion is fatal.
+  wifi_ps_type_t powerSave;
+  if (esp_wifi_get_ps(&powerSave) != ESP_OK || powerSave == WIFI_PS_NONE) {
+    Serial.println("[ble] unavailable: Wi-Fi modem sleep must be enabled for coexistence");
+    return;
+  }
+  hints_ = xQueueCreate(1, sizeof(HintEvent));
+  if (!hints_) { Serial.println("[ble] hint queue allocation failed"); return; }
+  instance = this;
+  if (!NimBLEDevice::init("")) {
+    Serial.println("[ble] controller initialization failed; continuing with ESP-NOW");
+    instance = nullptr; vQueueDelete(hints_); hints_ = nullptr;
+    return;
+  }
   auto* adv = NimBLEDevice::getAdvertising();
   adv->setConnectableMode(BLE_GAP_CONN_MODE_NON); adv->enableScanResponse(false);
   adv->setMinInterval(320); adv->setMaxInterval(480);
@@ -41,6 +54,7 @@ void GhostBle::begin(uint8_t) {
   scan->setScanCallbacks(&callbacks, false); scan->setActiveScan(false);
   scan->setInterval(101); scan->setWindow(31); scan->setMaxResults(0);
   started_ = true;
+  Serial.println("[ble] rendezvous ready");
 }
 bool GhostBle::updateAdvertisement(uint8_t channel) {
   BleHint hint{}; hint.company = 0xffff; memcpy(hint.magic, "GL", 2);
